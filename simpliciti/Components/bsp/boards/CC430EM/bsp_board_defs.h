@@ -39,6 +39,7 @@
 #ifndef BSP_BOARD_DEFS_H
 #define BSP_BOARD_DEFS_H
 
+#include <stdint.h>
 
 /* ------------------------------------------------------------------------------------------------
  *                                     Board Unique Define
