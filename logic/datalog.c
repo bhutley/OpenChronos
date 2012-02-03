@@ -83,24 +83,16 @@ struct datalog sDatalog;
 // *************************************************************************************************
 void reset_datalog(void) 
 {
-	/*
-	u8 i;
-	
-	for (i=DATALOG_PAGE_START; i<=DATALOG_PAGE_END; i++)
-	{
-		flash_erase_page(i);
-	}	
-	*/
 	// Clear data logger memory
 	// BH - test whether infomem is ready
 	infomem_ready();
 	infomem_app_clear(DATALOG_INFOMEM_ID);
+	sDatalog.write_offset	= 0;
 
 	sDatalog.flags.all	= 0;
-	sDatalog.mode		= DATALOG_MODE_TEMPERATURE + DATALOG_MODE_ALTITUDE;
+	sDatalog.mode		= DATALOG_MODE_ACCELERATION; //DATALOG_MODE_TEMPERATURE + DATALOG_MODE_ALTITUDE;
 	sDatalog.interval	= DATALOG_INTERVAL;
 	sDatalog.delay		= 0;
-	sDatalog.write_offset	= 0;
 	sDatalog.idx		= 0;
 }
 
@@ -249,13 +241,21 @@ void display_datalog(u8 line, u8 update)
 void do_datalog(void)
 {
 	u8 temp[6];
-	u8 count;
+	u8 count = 0;
 	
 	// If logging delay is over, add new data
 	if (--sDatalog.delay == 0)
 	{ 
 		// Store data when possible compressed (heartrate = 8 bits, temperature/altitude = min. 12 bits)
-		if (sDatalog.mode == (DATALOG_MODE_ACCELERATION | DATALOG_MODE_TEMPERATURE | DATALOG_MODE_ALTITUDE))
+		if (sDatalog.mode == DATALOG_MODE_ACCELERATION)
+		{
+			temp[0] = 0x12; // start of reading data
+			temp[1] = sAccel.xyz[0];
+			temp[2] = sAccel.xyz[1];
+			temp[3] = sAccel.xyz[2];
+			count = 4;
+		}
+		else if (sDatalog.mode == (DATALOG_MODE_ACCELERATION | DATALOG_MODE_TEMPERATURE | DATALOG_MODE_ALTITUDE))
 		{
 			temp[0] = (sAlt.temperature >> 4) & 0xFF;
 			temp[1] = ((sAlt.temperature << 4) & 0xF0) | ((sAlt.altitude >> 8) & 0x0F);
@@ -312,15 +312,19 @@ void do_datalog(void)
 			count = 3;
 		}
 		
+
+		if (count > 0)
+		{
+			// Add data to recording buffer		
+			datalog_sm((u8*)&temp, count, DATALOG_CMD_ADD_DATA);
+
 		
-		// Add data to recording buffer		
-		datalog_sm((u8*)&temp, count, DATALOG_CMD_ADD_DATA);
+			// Write to flash if buffer is over write threshold and no BlueRobin event is close
+			datalog_sm(NULL, 0, DATALOG_CMD_WRITE_DATA);
+		}
 
 		// Reset delay counter
 		sDatalog.delay = sDatalog.interval;
-		
-		// Write to flash if buffer is over write threshold and no BlueRobin event is close
-		datalog_sm(NULL, 0, DATALOG_CMD_WRITE_DATA);
 	}
 }
 
@@ -357,7 +361,8 @@ void datalog_write_buffer(void)
 	u8 count_in_words = sDatalog.idx / 2;
 
 	s16 mem_left = infomem_app_amount(DATALOG_INFOMEM_ID);
-	if (mem_left < count_in_words) {
+	if (mem_left < count_in_words) 
+	{
 	  	// Clear buffer index
 	  	sDatalog.idx = 0;
 	  	// Clear flags
@@ -367,7 +372,8 @@ void datalog_write_buffer(void)
 		display_symbol(LCD_ICON_RECORD, SEG_OFF_BLINK_OFF);
 
 	}
-	else {
+	else 
+	{
 		infomem_app_modify(
 			DATALOG_INFOMEM_ID, 
 			(u16 *)sDatalog.buffer, 
@@ -386,55 +392,6 @@ void datalog_write_buffer(void)
 			sDatalog.idx = 0;
 	  	}
 	}
-
-/*  
-	// Check if we cross end of memory threshold with this buffer write
-	if (sDatalog.wptr >= (u16*)(DATALOG_MEMORY_END - 1 - sDatalog.idx))
-	{
-		// Correct index to only write to end of memory
-		// Leave 2 bytes for session end marker
-		temp = (u16)sDatalog.wptr;
-		sDatalog.idx = (u8)((u16)DATALOG_MEMORY_END - 1 - temp);
-		eom = 1;
-	}		
-  
-	while (i<sDatalog.idx-1)
-	{
-	    // Keep array order when writing to flash memory
-	    data  = sDatalog.buffer[i++];
-	    data += (u16)(sDatalog.buffer[i++]<<8);
-	
-	    // Write 16-bit word to flash
-	    flash_write(sDatalog.wptr++, data);
-  	}
-  	
-  	 // Stop data logging and write session end marker
-	if (eom) 
-	{
-	  	// Write end marker
-	  	flash_write((u16*)(DATALOG_MEMORY_END-1), 0xFFFE);
-	  	// Clear buffer index
-	  	sDatalog.idx 					= 0;
-	  	// Clear flags
-	  	sDatalog.flags.flag.on 		    = 0;
-	  	sDatalog.flags.flag.memory_full = 1;
-		// Clear datalogger icon
-		display_symbol(LCD_ICON_RECORD, SEG_OFF_BLINK_OFF);
-	} 
-	else 
-	{
-		// If index was odd number, 1 byte remains in buffer and must be written next time
-		if ((sDatalog.idx & 0x01) == 0x01)
-		{
-	    	sDatalog.buffer[0] = sDatalog.buffer[sDatalog.idx-1];
-	    	sDatalog.idx 	   = 1;
-		}
-		else // All bytes haven been written
-		{
-	    	sDatalog.idx = 0;
-	  	}
-	}
-*/
 }
 
 
@@ -524,13 +481,6 @@ void datalog_sm(u8 * data, u8 len, u8 cmd)
 		if (!sDatalog.flags.flag.on)
 		{
 			infomem_app_clear(DATALOG_INFOMEM_ID);
-
-			/*
-			for (i=DATALOG_PAGE_START; i<=DATALOG_PAGE_END; i++)
-			{
-				flash_erase_page(i);
-			}
-			*/
 		}
 		break;
                               

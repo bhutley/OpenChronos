@@ -77,6 +77,9 @@
 #include "sidereal.h"
 #endif
 
+#include "infomem.h"
+#include "datalog.h"
+
 #if (CONFIG_DST > 0)
 #include "dst.h"
 #endif
@@ -611,6 +614,9 @@ void start_simpliciti_sync(void)
   	// Clear LINE1
 	//clear_line(LINE1);
 	//fptr_lcd_function_line1(LINE1, DISPLAY_LINE_CLEAR);
+
+	// Stop data logging and close session
+	stop_datalog();
 	
 	#ifdef FEATURE_PROVIDE_ACCEL
 	// Stop acceleration sensor
@@ -760,7 +766,10 @@ void simpliciti_sync_decode_ap_cmd_callback(void)
 										break;
 		
 		case SYNC_AP_CMD_ERASE_MEMORY:	// Erase data logger memory
-										break;
+			infomem_delete_all();
+			sDatalog.write_offset = 0;
+			sDatalog.flags.flag.memory_full = 0;
+			break;
 										
 		case SYNC_AP_CMD_EXIT:			// Exit sync mode
 										simpliciti_flag |= SIMPLICITI_TRIGGER_STOP;
@@ -779,50 +788,82 @@ void simpliciti_sync_decode_ap_cmd_callback(void)
 void simpliciti_sync_get_data_callback(unsigned int index)
 {
 	u8 i;
+	u16 bytes_ready = sDatalog.write_offset * 2;
 	
 	// simpliciti_data[0] contains data type and needs to be returned to AP
 	switch (simpliciti_data[0])
 	{
-		case SYNC_ED_TYPE_STATUS:		// Assemble status packet
-										simpliciti_data[1]  = (sys.flag.use_metric_units << 7) | (sTime.hour & 0x7F);
-										simpliciti_data[2]  = sTime.minute;
-										simpliciti_data[3]  = sTime.second;
-										simpliciti_data[4]  = sDate.year >> 8;
-										simpliciti_data[5]  = sDate.year & 0xFF;
-										simpliciti_data[6]  = sDate.month;
-										simpliciti_data[7]  = sDate.day;
-										#ifdef CONFIG_ALARM
-										simpliciti_data[8]  = sAlarm.hour;
-										simpliciti_data[9]  = sAlarm.minute;
-										#else
-										simpliciti_data[8]  = 4;
-										simpliciti_data[9]  = 30;
-										#endif
-										simpliciti_data[10] = sTemp.degrees >> 8;
-										simpliciti_data[11] = sTemp.degrees & 0xFF;
-#ifdef CONFIG_ALTITUDE
-										simpliciti_data[12] = sAlt.altitude >> 8;
-										simpliciti_data[13] = sAlt.altitude & 0xFF;
+	case SYNC_ED_TYPE_STATUS:		// Assemble status packet
+		simpliciti_data[1]  = (sys.flag.use_metric_units << 7) | (sTime.hour & 0x7F);
+		simpliciti_data[2]  = sTime.minute;
+		simpliciti_data[3]  = sTime.second;
+		simpliciti_data[4]  = sDate.year >> 8;
+		simpliciti_data[5]  = sDate.year & 0xFF;
+		simpliciti_data[6]  = sDate.month;
+		simpliciti_data[7]  = sDate.day;
+#ifdef CONFIG_ALARM
+		simpliciti_data[8]  = sAlarm.hour;
+		simpliciti_data[9]  = sAlarm.minute;
+#else
+		simpliciti_data[8]  = 4;
+		simpliciti_data[9]  = 30;
 #endif
-										break;
+		simpliciti_data[10] = sTemp.degrees >> 8;
+		simpliciti_data[11] = sTemp.degrees & 0xFF;
+#ifdef CONFIG_ALTITUDE
+		simpliciti_data[12] = sAlt.altitude >> 8;
+		simpliciti_data[13] = sAlt.altitude & 0xFF;
+#endif
+		// Data logging mode
+		simpliciti_data[14] = sDatalog.mode;
+		// Data logging interval
+		simpliciti_data[15] = sDatalog.interval;
+		// Bytes ready for download
+		simpliciti_data[16] = bytes_ready >> 8;
+		simpliciti_data[17] = bytes_ready & 0xFF;
+		// Unused
+		simpliciti_data[18] = 0;
+
+		break;
 										
-		case SYNC_ED_TYPE_MEMORY:		
-										if (burst_mode == 1)
-										{
-											// Set burst packet address
-											simpliciti_data[1] = ((burst_start + index) >> 8) & 0xFF;
-											simpliciti_data[2] = (burst_start + index) & 0xFF;
-											// Assemble payload
-											for (i=3; i<BM_SYNC_DATA_LENGTH; i++) simpliciti_data[i] = index;
-										} 
-										else if (burst_mode == 2)
-										{
-											// Set burst packet address
-											simpliciti_data[1] = (burst_packet[index] >> 8) & 0xFF;
-											simpliciti_data[2] = burst_packet[index] & 0xFF;
-											// Assemble payload
-											for (i=3; i<BM_SYNC_DATA_LENGTH; i++) simpliciti_data[i] = index;
-										}
-										break;
+	case SYNC_ED_TYPE_MEMORY:		
+		if (burst_mode == 1)
+		{
+			// Set burst packet address
+			simpliciti_data[1] = ((burst_start + index) >> 8) & 0xFF;
+			simpliciti_data[2] = (burst_start + index) & 0xFF;
+			// Assemble payload
+			u8 word_count = ((BM_SYNC_DATA_LENGTH - 3) / 2);
+			u8 offset = (burst_start + index)*16;
+			if (word_count > 0)
+			{
+				infomem_app_read(DATALOG_INFOMEM_ID, (u16*)(&simpliciti_data[3]), word_count, offset);
+			}
+
+			i = 3 + (word_count * 2);
+			for (; i<BM_SYNC_DATA_LENGTH; i++) {
+				simpliciti_data[i] = 0xff;
+			}
+		} 
+		else if (burst_mode == 2)
+		{
+			// Set burst packet address
+			simpliciti_data[1] = (burst_packet[index] >> 8) & 0xFF;
+			simpliciti_data[2] = burst_packet[index] & 0xFF;
+			// Assemble payload
+			u8 word_count = ((BM_SYNC_DATA_LENGTH - 3) / 2);
+			u8 offset = burst_packet[index]*16;
+
+			if (word_count > 0)
+			{
+				infomem_app_read(DATALOG_INFOMEM_ID, (u16*)(&simpliciti_data[3]), word_count, offset);
+			}
+
+			i = 3 + (word_count * 2);
+			for (; i<BM_SYNC_DATA_LENGTH; i++) {
+				simpliciti_data[i] = 0xff;
+			}
+		}
+		break;
 	}
 }

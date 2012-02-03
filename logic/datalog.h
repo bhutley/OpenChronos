@@ -120,7 +120,7 @@ struct datalog
 
 	// Datalog memory write pointer
 	u8         	write_offset;
-	
+
 	// Datalogger write buffer index
   	u8          	idx;
 
@@ -129,8 +129,7 @@ struct datalog
 };
 extern struct datalog sDatalog;
 
-
-#define DATALOG_INFOMEM_ID 0x20
+#define DATALOG_INFOMEM_ID 0x00
 
 // *************************************************************************************************
 // Extern section
