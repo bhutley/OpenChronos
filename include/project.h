@@ -128,6 +128,9 @@ typedef union
 #ifdef CONFIG_STRENGTH
     u16 strength_buzzer 		: 1;    // 1 = Output buzzer from strength_data
 #endif
+#ifdef CONFIG_USE_DATALOG
+    u16 datalog						: 1;	// 1 = Add data 
+#endif
   } flag;
   u16 all_flags;            // Shortcut to all display flags (for reset)
 } s_request_flags;
@@ -151,6 +154,7 @@ typedef union
     u16 type_alarm_on_chime_on			: 1;	// 1 = Show " onh" text in Line1
     u16 type_no_beep_on					: 1;	// 1 = Show " beep" text in Line2
     u16 type_no_beep_off				: 1;	// 1 = Show "nobeep" text in Line2
+    u16 type_nomem			: 1;	// 1 = Show "nomem" text in Line2
     u16 block_line1						: 1;	// 1 = block Line1 from updating until message erase
     u16 block_line2						: 1;	// 1 = block Line2 from updating until message erase
  } flag;

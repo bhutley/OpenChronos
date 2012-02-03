@@ -94,6 +94,10 @@
 #include "strength.h"
 #endif
 
+#ifdef CONFIG_USE_DATALOG
+#include "datalog.h"
+#endif
+
 // *************************************************************************************************
 // Prototypes section
 void Timer0_Init(void);
@@ -455,6 +459,11 @@ __interrupt void TIMER0_A0_ISR(void)
 	{
 		strength_tick();
 	}            
+#endif
+
+#ifdef CONFIG_USE_DATALOG
+	// Request data logging
+	if (is_datalog()) request.flag.datalog = 1;
 #endif
 
 	// Do a temperature measurement each second while menu item is active

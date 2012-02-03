@@ -252,6 +252,12 @@ DATA["CONFIG_CW_TIME"] = {
         "default": False,
 	"help": "Send time in morse code"}
 
+# Implemented by Brett Hutley
+DATA["CONFIG_USE_DATALOG"] = {
+	"name": "Data logging functions",
+	"depends": ["CONFIG_INFOMEM", ],
+	"default": False}
+
 HEADER = """
 #ifndef _CONFIG_H_
 #define _CONFIG_H_

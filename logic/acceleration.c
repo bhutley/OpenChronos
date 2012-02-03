@@ -85,6 +85,30 @@ void reset_acceleration(void)
 	sAccel.mode			= ACCEL_MODE_OFF;
 }
 
+void stop_acceleration_measurement(void)
+{
+	// Stop acceleration sensor
+	as_stop();
+	
+	// Clear mode
+	sAccel.mode = ACCEL_MODE_OFF;
+}
+
+void start_acceleration_measurement(void)
+{
+	if (!is_acceleration_measurement()) 
+	{	
+		// Start sensor
+		as_start();
+		
+		// Set timeout counter
+		sAccel.timeout = ACCEL_MEASUREMENT_TIMEOUT;
+		
+		// Set mode
+		sAccel.mode = ACCEL_MODE_ON;
+	}
+}
+
 
 // *************************************************************************************************
 // @fn          sx_acceleration

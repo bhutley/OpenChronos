@@ -88,4 +88,8 @@ extern void display_acceleration(u8 line, u8 update);
 extern u8 is_acceleration_measurement(void);
 extern void do_acceleration_measurement(void);
 
+// Added for Datalogging
+void stop_acceleration_measurement(void);
+void start_acceleration_measurement(void);
+
 #endif /*ACCELERATION_H_*/

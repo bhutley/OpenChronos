@@ -90,7 +90,9 @@
 #ifdef CONFIG_STRENGTH
 #include "strength.h"
 #endif
-
+#ifdef CONFIG_USE_DATALOG
+#include "datalog.h"
+#endif
 #include "mrfi.h"
 #include "nwk_types.h"
 
@@ -239,10 +241,11 @@ void init_application(void)
     // UG for optimization.
     // 32 x 32 x 8 MHz / 32,768 Hz = 250000 = MCLK cycles for DCO to settle
     // BH __delay_cycles(250000);
-	__delay_cycles(64000);
-	__delay_cycles(64000);
-	__delay_cycles(64000);
-	__delay_cycles(58000);
+	__delay_cycles(50000);
+	__delay_cycles(50000);
+	__delay_cycles(50000);
+	__delay_cycles(50000);
+	__delay_cycles(50000);
   
 	// Loop until XT1 & DCO stabilizes, use do-while to insure that 
 	// body is executed at least once
@@ -434,6 +437,11 @@ void init_global_variables(void)
 	reset_batt_measurement();
 	battery_measurement();
 	#endif
+
+#ifdef CONFIG_USE_DATALOG
+	// Reset data logger
+	reset_datalog();
+#endif
 }
 
 
@@ -613,6 +621,11 @@ void process_requests(void)
 	}
 #endif
 
+#ifdef CONFIG_USE_DATALOG
+  	// Add data to datalog buffer
+  	if (request.flag.datalog) do_datalog();
+#endif
+
 	// Reset request flag
 	request.all_flags = 0;
 }
@@ -667,6 +680,7 @@ void display_update(void)
 		else if (message.flag.type_lobatt)		memcpy(string, "LOBATT", 6);
 		else if (message.flag.type_no_beep_on)  memcpy(string, " SILNT", 6);
 		else if (message.flag.type_no_beep_off) memcpy(string, "  BEEP", 6);
+		else if (message.flag.type_nomem)		memcpy(string, " NOMEM", 6);
 		#ifdef CONFIG_ALARM 
 		else if (message.flag.type_alarm_off_chime_off)	
 		{

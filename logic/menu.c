@@ -96,6 +96,9 @@
 #include "gps.h"
 #endif
 
+#ifdef CONFIG_USE_DATALOG
+#include "datalog.h"
+#endif
 
 // *************************************************************************************************
 // Defines section
@@ -442,6 +445,17 @@ const struct menu menu_L2_Gps =
 };
 #endif
 
+#ifdef CONFIG_USE_DATALOG
+const struct menu menu_L2_DataLog =
+{
+	FUNCTION(sx_datalog),			// direct function
+	FUNCTION(dummy),					// sub menu function
+	FUNCTION(menu_skip_next),  // sub menu function
+	FUNCTION(display_datalog),		// display function
+	FUNCTION(update_time),			// new display data
+};
+#endif
+
 // *************************************************************************************************
 // menu array
 
@@ -511,6 +525,9 @@ const struct menu *menu_L2[]={
 	#endif	
 	#ifdef CONFIG_USE_GPS
 	&menu_L2_Gps,
+	#endif
+	#ifdef CONFIG_USE_DATALOG
+	&menu_L2_DataLog,
 	#endif
 };
 

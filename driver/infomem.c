@@ -7,7 +7,7 @@
 
 #include "project.h"
 
-#ifdef CONFIG_INFOMEM
+//#ifdef CONFIG_INFOMEM
 
 #include "infomem.h"
 
@@ -910,4 +910,4 @@ s16 infomem_app_modify(u8 identifier, u16* data, u8 count, u8 offset)
 	}
 }
 
-#endif
+//#endif
