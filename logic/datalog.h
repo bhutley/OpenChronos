@@ -62,8 +62,10 @@ extern void sx_datalog(u8 line);
 #define DATALOG_ON						(1u)
 
 // Data memory range: 0x8000 - 0x9DFF (7.5kB)
-#define DATALOG_MEMORY_START         	(0x8000)
-#define DATALOG_MEMORY_END           	(0x9DFF)
+//#define DATALOG_MEMORY_START         	(0x8000)
+//#define DATALOG_MEMORY_END           	(0x9DFF)
+#define DATALOG_MEMORY_START (0x1880)
+#define DATALOG_MEMORY_END   (0x1880+256)
 #define DATALOG_BYTES_PER_PAGE       	(512u)
 #define DATALOG_PAGE_START				(DATALOG_MEMORY_START/DATALOG_BYTES_PER_PAGE)
 #define DATALOG_PAGE_END				(DATALOG_MEMORY_END/DATALOG_BYTES_PER_PAGE)
@@ -119,7 +121,11 @@ struct datalog
 	u8 				delay;
 
 	// Datalog memory write pointer
+#ifdef USE_INFOMEM
 	u8         	write_offset;
+#else
+	u16         	*wptr;
+#endif
 
 	// Datalogger write buffer index
   	u8          	idx;

@@ -77,7 +77,11 @@
 #include "sidereal.h"
 #endif
 
+#ifdef USE_INFOMEM
 #include "infomem.h"
+#else
+#include "flash.h"
+#endif
 #include "datalog.h"
 
 #if (CONFIG_DST > 0)
@@ -130,6 +134,10 @@ u16		burst_packet[BM_SYNC_BURST_PACKETS_IN_DATA];
 // Current packet index
 u8		burst_packet_index;
 
+#ifndef USE_INFOMEM
+// Byte-Pointer to flash memory
+u8 		*flash_ptr; 
+#endif
 
 // *************************************************************************************************
 // Extern section
@@ -696,84 +704,93 @@ void simpliciti_sync_decode_ap_cmd_callback(void)
 	
 	switch (simpliciti_data[0])
 	{
-		case SYNC_AP_CMD_NOP:			break;
+	case SYNC_AP_CMD_NOP:	
+		break;
 
-		case SYNC_AP_CMD_GET_STATUS:	// Send watch parameters
-										simpliciti_data[0]  = SYNC_ED_TYPE_STATUS;
-										// Send single reply packet
-										simpliciti_reply_count = 1;
-										break;
+	case SYNC_AP_CMD_GET_STATUS:	// Send watch parameters
+		simpliciti_data[0]  = SYNC_ED_TYPE_STATUS;
+		// Send single reply packet
+		simpliciti_reply_count = 1;
+		break;
 
-		case SYNC_AP_CMD_SET_WATCH:		// Set watch parameters
-										sys.flag.use_metric_units = (simpliciti_data[1] >> 7) & 0x01;
-										sTime.hour 			= simpliciti_data[1] & 0x7F;
-										sTime.minute 		= simpliciti_data[2];
-										sTime.second 		= simpliciti_data[3];
-										sDate.year 			= (simpliciti_data[4]<<8) + simpliciti_data[5];
-										sDate.month 		= simpliciti_data[6];
-										sDate.day 			= simpliciti_data[7];
-										#ifdef CONFIG_ALARM
-										sAlarm.hour			= simpliciti_data[8];
-										sAlarm.minute		= simpliciti_data[9];
-										#endif
+	case SYNC_AP_CMD_SET_WATCH:		// Set watch parameters
+		sys.flag.use_metric_units = (simpliciti_data[1] >> 7) & 0x01;
+		sTime.hour 		= simpliciti_data[1] & 0x7F;
+		sTime.minute 		= simpliciti_data[2];
+		sTime.second 		= simpliciti_data[3];
+		sDate.year 		= (simpliciti_data[4]<<8) + simpliciti_data[5];
+		sDate.month 		= simpliciti_data[6];
+		sDate.day 		= simpliciti_data[7];
+#ifdef CONFIG_ALARM
+		sAlarm.hour		= simpliciti_data[8];
+		sAlarm.minute		= simpliciti_data[9];
+#endif
 
-                                        #if (CONFIG_DST > 0)
-                                        dst_calculate_dates();
-                                        #endif
-										// Set temperature and temperature offset
-										t1 = (s16)((simpliciti_data[10]<<8) + simpliciti_data[11]);
-										offset = t1 - (sTemp.degrees - sTemp.offset);
-										sTemp.offset  = offset;	
-										sTemp.degrees = t1;									
-										// Set altitude
+#if (CONFIG_DST > 0)
+		dst_calculate_dates();
+#endif
+		// Set temperature and temperature offset
+		t1 = (s16)((simpliciti_data[10]<<8) + simpliciti_data[11]);
+		offset = t1 - (sTemp.degrees - sTemp.offset);
+		sTemp.offset  = offset;	
+		sTemp.degrees = t1;									
+		// Set altitude
 #ifdef CONFIG_ALTITUDE
-										sAlt.altitude = (s16)((simpliciti_data[12]<<8) + simpliciti_data[13]);
-										update_pressure_table(sAlt.altitude, sAlt.pressure, sAlt.temperature);
+		sAlt.altitude = (s16)((simpliciti_data[12]<<8) + simpliciti_data[13]);
+		update_pressure_table(sAlt.altitude, sAlt.pressure, sAlt.temperature);
 #endif
 #ifdef CONFIG_SIDEREAL
-										if(sSidereal_time.sync>0)
-											sync_sidereal();
+		if(sSidereal_time.sync>0)
+			sync_sidereal();
 #endif
 #ifdef CONFIG_USE_SYNC_TOSET_TIME
-										simpliciti_flag |= SIMPLICITI_TRIGGER_STOP;
+		simpliciti_flag |= SIMPLICITI_TRIGGER_STOP;
 #endif
-										break;
+		break;
 												
-		case SYNC_AP_CMD_GET_MEMORY_BLOCKS_MODE_1:	
-										// Send sequential packets out in a burst 
-										simpliciti_data[0]  = SYNC_ED_TYPE_MEMORY;
-										// Get burst start and end packet
-										burst_start = (simpliciti_data[1]<<8)+simpliciti_data[2];
-										burst_end   = (simpliciti_data[3]<<8)+simpliciti_data[4];
-										// Set burst mode
-										burst_mode = 1;
-										// Number of packets to send
-										simpliciti_reply_count = burst_end - burst_start;
-										break;
+	case SYNC_AP_CMD_GET_MEMORY_BLOCKS_MODE_1:	
+		// Send sequential packets out in a burst 
+		simpliciti_data[0]  = SYNC_ED_TYPE_MEMORY;
+		// Get burst start and end packet
+		burst_start = (simpliciti_data[1]<<8)+simpliciti_data[2];
+		burst_end   = (simpliciti_data[3]<<8)+simpliciti_data[4];
+		// Set burst mode
+		burst_mode = 1;
+		// Number of packets to send
+		simpliciti_reply_count = burst_end - burst_start;
+		break;
 
-		case SYNC_AP_CMD_GET_MEMORY_BLOCKS_MODE_2:	
-										// Send specified packets out in a burst 
-										simpliciti_data[0]  = SYNC_ED_TYPE_MEMORY;
-										// Store the requested packets
-										for (i=0; i<BM_SYNC_BURST_PACKETS_IN_DATA; i++)
-										{
-											burst_packet[i] = (simpliciti_data[i*2+1]<<8)+simpliciti_data[i*2+2];
-										}
-										// Set burst mode
-										burst_mode = 2;
-										// Number of packets to send
-										simpliciti_reply_count = BM_SYNC_BURST_PACKETS_IN_DATA;
-										break;
+	case SYNC_AP_CMD_GET_MEMORY_BLOCKS_MODE_2:	
+		// Send specified packets out in a burst 
+		simpliciti_data[0]  = SYNC_ED_TYPE_MEMORY;
+		// Store the requested packets
+		for (i=0; i<BM_SYNC_BURST_PACKETS_IN_DATA; i++)
+		{
+			burst_packet[i] = (simpliciti_data[i*2+1]<<8)+simpliciti_data[i*2+2];
+		}
+		// Set burst mode
+		burst_mode = 2;
+		// Number of packets to send
+		simpliciti_reply_count = BM_SYNC_BURST_PACKETS_IN_DATA;
+		break;
 		
-		case SYNC_AP_CMD_ERASE_MEMORY:	// Erase data logger memory
-			infomem_delete_all();
-			sDatalog.write_offset = 0;
-			sDatalog.flags.flag.memory_full = 0;
-			break;
+	case SYNC_AP_CMD_ERASE_MEMORY:	// Erase data logger memory
+#ifdef USE_INFOMEM
+		infomem_delete_all();
+		sDatalog.write_offset = 0;
+#else
+		for (i=DATALOG_PAGE_START; i<=DATALOG_PAGE_END; i++)
+		{
+			flash_erase_page(i);
+		}	
+		sDatalog.wptr = (u16*)DATALOG_MEMORY_START;
+#endif
+		sDatalog.flags.flag.memory_full = 0;
+		break;
 										
-		case SYNC_AP_CMD_EXIT:			// Exit sync mode
-										simpliciti_flag |= SIMPLICITI_TRIGGER_STOP;
-										break;										
+	case SYNC_AP_CMD_EXIT:			// Exit sync mode
+		simpliciti_flag |= SIMPLICITI_TRIGGER_STOP;
+		break;										
 	}
 	
 }
@@ -788,7 +805,11 @@ void simpliciti_sync_decode_ap_cmd_callback(void)
 void simpliciti_sync_get_data_callback(unsigned int index)
 {
 	u8 i;
+#ifdef USE_INFOMEM
 	u16 bytes_ready = sDatalog.write_offset * 2;
+#else
+  	u16 bytes_ready = (sDatalog.wptr - (u16*)DATALOG_MEMORY_START)*2; 
+#endif
 	
 	// simpliciti_data[0] contains data type and needs to be returned to AP
 	switch (simpliciti_data[0])
@@ -832,6 +853,8 @@ void simpliciti_sync_get_data_callback(unsigned int index)
 			// Set burst packet address
 			simpliciti_data[1] = ((burst_start + index) >> 8) & 0xFF;
 			simpliciti_data[2] = (burst_start + index) & 0xFF;
+
+#ifdef USE_INFOMEM
 			// Assemble payload
 			u8 word_count = ((BM_SYNC_DATA_LENGTH - 3) / 2);
 			u8 offset = (burst_start + index)*16;
@@ -844,6 +867,11 @@ void simpliciti_sync_get_data_callback(unsigned int index)
 			for (; i<BM_SYNC_DATA_LENGTH; i++) {
 				simpliciti_data[i] = 0xff;
 			}
+#else
+			// Assemble payload
+			flash_ptr = (u8*)(DATALOG_MEMORY_START + (burst_start + index)*16);
+			for (i=3; i<BM_SYNC_DATA_LENGTH; i++) simpliciti_data[i] = *flash_ptr++;
+#endif
 		} 
 		else if (burst_mode == 2)
 		{
@@ -851,6 +879,8 @@ void simpliciti_sync_get_data_callback(unsigned int index)
 			simpliciti_data[1] = (burst_packet[index] >> 8) & 0xFF;
 			simpliciti_data[2] = burst_packet[index] & 0xFF;
 			// Assemble payload
+
+#ifdef USE_INFOMEM
 			u8 word_count = ((BM_SYNC_DATA_LENGTH - 3) / 2);
 			u8 offset = burst_packet[index]*16;
 
@@ -863,6 +893,10 @@ void simpliciti_sync_get_data_callback(unsigned int index)
 			for (; i<BM_SYNC_DATA_LENGTH; i++) {
 				simpliciti_data[i] = 0xff;
 			}
+#else
+			flash_ptr = (u8*)(DATALOG_MEMORY_START + burst_packet[index]*16);
+			for (i=3; i<BM_SYNC_DATA_LENGTH; i++) simpliciti_data[i] = *flash_ptr++;
+#endif
 		}
 		break;
 	}

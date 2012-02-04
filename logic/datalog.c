@@ -44,7 +44,11 @@
 
 // driver
 #include "display.h"
+#ifdef USE_INFOMEM
 #include "infomem.h"
+#else
+#include "flash.h"
+#endif
 
 // logic
 #include "datalog.h"
@@ -83,14 +87,28 @@ struct datalog sDatalog;
 // *************************************************************************************************
 void reset_datalog(void) 
 {
+#ifdef USE_INFOMEM
 	// Clear data logger memory
 	// BH - test whether infomem is ready
-	infomem_ready();
-	infomem_app_clear(DATALOG_INFOMEM_ID);
+	if (infomem_ready() > 0) {
+		u16 data[1] = { 0xdead };
+		infomem_app_replace(DATALOG_INFOMEM_ID, data, 1);
+	}
 	sDatalog.write_offset	= 0;
+#else
+	u8 i;
+	
+	// Clear data logger memory
+	for (i=DATALOG_PAGE_START; i<=DATALOG_PAGE_END; i++)
+	{
+		flash_erase_page(i);
+	}
+
+	sDatalog.wptr 		= (u16*)DATALOG_MEMORY_START;
+#endif
 
 	sDatalog.flags.all	= 0;
-	sDatalog.mode		= DATALOG_MODE_ACCELERATION; //DATALOG_MODE_TEMPERATURE + DATALOG_MODE_ALTITUDE;
+	sDatalog.mode		= DATALOG_MODE_ACCELERATION | DATALOG_MODE_TEMPERATURE | DATALOG_MODE_ALTITUDE;
 	sDatalog.interval	= DATALOG_INTERVAL;
 	sDatalog.delay		= 0;
 	sDatalog.idx		= 0;
@@ -247,15 +265,7 @@ void do_datalog(void)
 	if (--sDatalog.delay == 0)
 	{ 
 		// Store data when possible compressed (heartrate = 8 bits, temperature/altitude = min. 12 bits)
-		if (sDatalog.mode == DATALOG_MODE_ACCELERATION)
-		{
-			temp[0] = 0x12; // start of reading data
-			temp[1] = sAccel.xyz[0];
-			temp[2] = sAccel.xyz[1];
-			temp[3] = sAccel.xyz[2];
-			count = 4;
-		}
-		else if (sDatalog.mode == (DATALOG_MODE_ACCELERATION | DATALOG_MODE_TEMPERATURE | DATALOG_MODE_ALTITUDE))
+		if (sDatalog.mode == (DATALOG_MODE_ACCELERATION | DATALOG_MODE_TEMPERATURE | DATALOG_MODE_ALTITUDE))
 		{
 			temp[0] = (sAlt.temperature >> 4) & 0xFF;
 			temp[1] = ((sAlt.temperature << 4) & 0xF0) | ((sAlt.altitude >> 8) & 0x0F);
@@ -264,6 +274,14 @@ void do_datalog(void)
 			temp[4] = sAccel.xyz[1];
 			temp[5] = sAccel.xyz[2];
 			count = 6;
+		}
+		else if (sDatalog.mode == DATALOG_MODE_ACCELERATION)
+		{
+			temp[0] = 0x12; // start of reading data
+			temp[1] = sAccel.xyz[0];
+			temp[2] = sAccel.xyz[1];
+			temp[3] = sAccel.xyz[2];
+			count = 4;
 		}
 //		else if (sDatalog.mode == DATALOG_MODE_HEARTRATE)
 //		{
@@ -357,6 +375,7 @@ void datalog_add_to_buffer(u8 * data, u8 len)
 // *************************************************************************************************
 void datalog_write_buffer(void)
 {
+#ifdef USE_INFOMEM
 	// Write buffer content to flash
 	u8 count_in_words = sDatalog.idx / 2;
 
@@ -392,6 +411,60 @@ void datalog_write_buffer(void)
 			sDatalog.idx = 0;
 	  	}
 	}
+#else
+	u8 	i = 0;
+	u16 data;
+	u8 	eom = 0;
+	volatile u16 temp;
+  
+	// Check if we cross end of memory threshold with this buffer write
+	if (sDatalog.wptr >= (u16*)(DATALOG_MEMORY_END - 1 - sDatalog.idx))
+	{
+		// Correct index to only write to end of memory
+		// Leave 2 bytes for session end marker
+		temp = (u16)sDatalog.wptr;
+		sDatalog.idx = (u8)((u16)DATALOG_MEMORY_END - 1 - temp);
+		eom = 1;
+	}		
+  
+	// Write buffer content to flash
+	while (i<sDatalog.idx-1)
+	{
+		// Keep array order when writing to flash memory
+		data  = sDatalog.buffer[i++];
+		data += (u16)(sDatalog.buffer[i++]<<8);
+	
+		// Write 16-bit word to flash
+		flash_write(sDatalog.wptr++, data);
+  	}
+  	
+	// Stop data logging and write session end marker
+	if (eom) 
+	{
+	  	// Write end marker
+	  	flash_write((u16*)(DATALOG_MEMORY_END-1), 0xFFFE);
+	  	// Clear buffer index
+	  	sDatalog.idx 					= 0;
+	  	// Clear flags
+	  	sDatalog.flags.flag.on 		    = 0;
+	  	sDatalog.flags.flag.memory_full = 1;
+		// Clear datalogger icon
+		display_symbol(LCD_ICON_RECORD, SEG_OFF_BLINK_OFF);
+	} 
+	else 
+	{
+		// If index was odd number, 1 byte remains in buffer and must be written next time
+		if ((sDatalog.idx & 0x01) == 0x01)
+		{
+			sDatalog.buffer[0] = sDatalog.buffer[sDatalog.idx-1];
+			sDatalog.idx 	   = 1;
+		}
+		else // All bytes haven been written
+		{
+			sDatalog.idx = 0;
+	  	}
+	}
+#endif
 }
 
 
@@ -480,7 +553,14 @@ void datalog_sm(u8 * data, u8 len, u8 cmd)
 	case DATALOG_CMD_ERASE:	
 		if (!sDatalog.flags.flag.on)
 		{
+#ifdef USE_INFOMEM
 			infomem_app_clear(DATALOG_INFOMEM_ID);
+#else
+			for (i=DATALOG_PAGE_START; i<=DATALOG_PAGE_END; i++)
+			{
+				flash_erase_page(i);
+			}
+#endif
 		}
 		break;
                               
